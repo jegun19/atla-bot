@@ -6,6 +6,9 @@ import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Element;
+import org.jsoup.safety.Safelist;
 import org.service.atlassian.bot.config.JiraProperties;
 import org.service.atlassian.bot.model.enums.IssueTypeEnum;
 import org.service.atlassian.bot.model.enums.Priority;
@@ -15,15 +18,14 @@ import org.service.atlassian.bot.model.response.CreateIssueResponse;
 import org.service.atlassian.bot.model.response.GetIssueTypesResponse;
 import org.service.atlassian.bot.model.response.GetProjectResponse;
 import org.service.atlassian.bot.model.response.SearchIssueResponse;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Service
@@ -55,8 +57,8 @@ public class JiraService {
         }
     }
 
-    @Tool("Check what fields do the user need to provide")
-    public Issue getFieldsForIssueType(@P("Issue type") String issueType) {
+    @Tool("Check what fields need to be filled for a specific issue type")
+    public Issue getFieldsForIssueType(@P("Name of the issue type") String issueType) {
         log.info("Getting fields for issueType: {}", issueType);
         try {
             IssueTypeEnum issueTypeEnum = IssueTypeEnum.valueOf(issueType.toUpperCase());
@@ -291,5 +293,68 @@ public class JiraService {
             throw new RuntimeException(e);
         }
         return jiraProperties.getUrl() + "/browse/" + response.getBody().getKey();
+    }
+
+    @Tool("Parse Confluence Document by ID")
+    public String parseConfluenceDocument(@P("Page ID") String pageId) {
+        log.info("Parsing Confluence Document with Page ID: {}", pageId);
+        String url = jiraProperties.getUrl() + "/wiki/rest/api/content/" + pageId + "?expand=body.storage";
+        RestTemplate restTemplate = new RestTemplate();
+
+        HttpHeaders headers = new HttpHeaders();
+        String authToken = jiraProperties.getAuthToken();
+        headers.set("Authorization", authToken);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
+
+        Map body = (Map) response.getBody().get("body");
+        Map storage = (Map) body.get("storage");
+        String rawHtml = (String) storage.get("value");
+
+        return cleanHtmlForLLM(rawHtml);
+    }
+
+    @Tool("Find Confluence Page ID by Title")
+    public String findPageIdByTitle(@P("Page Title") String title) {
+        log.info("Finding Confluence Page ID by title: {}", title);
+        RestTemplate restTemplate = new RestTemplate();
+        String cql = "title~\"" + title + "\"";
+        String url = UriComponentsBuilder.fromHttpUrl(jiraProperties.getUrl() + "/wiki/rest/api/content/search")
+                .queryParam("cql", cql)
+                .build()
+                .toUriString();
+        String authToken = jiraProperties.getAuthToken();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", authToken);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
+
+        List<Map> results = (List<Map>) response.getBody().get("results");
+        if (results != null && !results.isEmpty()) {
+            log.info("Found Confluence Page ID: {}", results.get(0).get("id"));
+            return (String) results.get(0).get("id");
+        }
+        return null;
+    }
+
+    private String cleanHtmlForLLM(String html) {
+        // Remove scripts, style, comments, macros
+        Element document = Jsoup.parse(html).body();
+
+        // Remove common Confluence-specific noise (optional)
+        document.select(".conf-macro, .wysiwyg-macro, script, style").remove();
+
+        // Clean HTML to safe plain text
+        String plainText = Jsoup.clean(document.html(), "", Safelist.none(), new org.jsoup.nodes.Document.OutputSettings().prettyPrint(false));
+
+        // Optional post-processing
+        return plainText
+                .replaceAll("\\n{2,}", "\n") // collapse multiple newlines
+                .trim();
     }
 }
