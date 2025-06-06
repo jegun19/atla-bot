@@ -1,8 +1,10 @@
 package org.service.atlassian.bot.agent;
 
 import dev.langchain4j.service.SystemMessage;
+import dev.langchain4j.service.spring.AiService;
 
 
+@AiService
 public interface JiraAssistant {
 
     @SystemMessage("""
