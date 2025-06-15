@@ -1,5 +1,6 @@
 package org.service.atlassian.bot.agent;
 
+import dev.langchain4j.service.Result;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.spring.AiService;
 
@@ -35,5 +36,5 @@ public interface JiraAssistant {
             5. Before creating the issues, you need to describe all the fields which will be used to create the issues and ask the user to confirm if they are correct. Then, create the issues using the tool provided to you. Do not use any special character when generating the information. Use only alphanumeric characters.
             6. Finally, return the list of issues that you have created based on the requirements written in the Confluence page.
             """)
-    public String chat(String userMessage);
+    Result<String> chat(String userMessage);
 }
