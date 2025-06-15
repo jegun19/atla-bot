@@ -4,10 +4,18 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.data.message.ImageContent;
+import dev.langchain4j.data.message.TextContent;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.TextNode;
+import org.jsoup.parser.Parser;
 import org.jsoup.safety.Safelist;
 import org.service.atlassian.bot.config.JiraProperties;
 import org.service.atlassian.bot.model.enums.IssueTypeEnum;
@@ -24,6 +32,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -34,6 +43,7 @@ import java.util.Objects;
 public class JiraService {
 
     private final JiraProperties jiraProperties;
+    private final ChatLanguageModel imageLanguageModel;
     private final ObjectMapper objectMapper;
 
     @Tool("Get Reporter ID. Do not make any modification to the ID, use it as it is.")
@@ -313,7 +323,7 @@ public class JiraService {
         Map storage = (Map) body.get("storage");
         String rawHtml = (String) storage.get("value");
 
-        return cleanHtmlForLLM(rawHtml);
+        return cleanHtmlForLLM(rawHtml, pageId);
     }
 
     @Tool("Find Confluence Page ID by Title")
@@ -342,9 +352,49 @@ public class JiraService {
         return null;
     }
 
-    private String cleanHtmlForLLM(String html) {
-        // Remove scripts, style, comments, macros
-        Element document = Jsoup.parse(html).body();
+    private String analyzeImage(String imageUrl) {
+        // Fetch the Confluence page content
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", jiraProperties.getAuthToken());
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        RestTemplate restTemplate = new RestTemplate();
+
+        log.info("Analyzing image from URL: {}", imageUrl);
+        HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
+        ResponseEntity<byte[]> byteResponse = restTemplate.exchange(
+                imageUrl,
+                HttpMethod.GET,
+                requestEntity,
+                byte[].class
+        );
+
+        log.info("Image fetched successfully, size: {} bytes", byteResponse.getBody().length);
+        String base64result = Base64.getEncoder().encodeToString(byteResponse.getBody());
+        UserMessage userMessage = UserMessage.from(
+                ImageContent.from(base64result, "image/png"),
+                TextContent.from("""
+                        Describe the steps or sequence of actions shown in the image using clear language. If the image is a flow or sequence, present the process in ordered steps.
+                        """)
+        );
+        ChatResponse chatresult = imageLanguageModel.chat(userMessage);
+        log.info("Image converted to Base64 and processed by LLM: {}", chatresult);
+        return chatresult.aiMessage().text();
+    }
+
+    private String cleanHtmlForLLM(String html, String pageId) {
+        // Parse as XML to support both HTML and Confluence macros
+        Document document = Jsoup.parse(html, Parser.xmlParser());
+
+        // 🔍 Handle Confluence <ac:image> macros
+        document.select("ac|image").forEach(acImage -> {
+            Element attachment = acImage.selectFirst("ri|attachment");
+            if (attachment != null) {
+                String filename = attachment.attr("ri:filename");
+                String imageUrl = jiraProperties.getUrl() + "/wiki/download/attachments/" + pageId + "/" + filename;
+                String imageAnalysisResult = analyzeImage(imageUrl);
+                acImage.replaceWith(new TextNode(imageAnalysisResult));
+            }
+        });
 
         // Remove common Confluence-specific noise (optional)
         document.select(".conf-macro, .wysiwyg-macro, script, style").remove();
