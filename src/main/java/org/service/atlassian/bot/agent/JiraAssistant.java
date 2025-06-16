@@ -2,11 +2,8 @@ package org.service.atlassian.bot.agent;
 
 import dev.langchain4j.service.Result;
 import dev.langchain4j.service.SystemMessage;
-import dev.langchain4j.service.spring.AiService;
-import dev.langchain4j.service.spring.AiServiceWiringMode;
 
 
-@AiService(wiringMode = AiServiceWiringMode.EXPLICIT, chatModel = "geminiLanguageModel")
 public interface JiraAssistant {
 
     @SystemMessage("""
