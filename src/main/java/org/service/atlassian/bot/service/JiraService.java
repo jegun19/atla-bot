@@ -7,7 +7,10 @@ import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.TextNode;
+import org.jsoup.parser.Parser;
 import org.jsoup.safety.Safelist;
 import org.service.atlassian.bot.config.JiraProperties;
 import org.service.atlassian.bot.model.enums.IssueTypeEnum;
@@ -35,6 +38,7 @@ public class JiraService {
 
     private final JiraProperties jiraProperties;
     private final ObjectMapper objectMapper;
+    private final ImageService imageService;
 
     @Tool("Get Reporter ID. Do not make any modification to the ID, use it as it is.")
     public String getReporterId() {
@@ -313,7 +317,7 @@ public class JiraService {
         Map storage = (Map) body.get("storage");
         String rawHtml = (String) storage.get("value");
 
-        return cleanHtmlForLLM(rawHtml);
+        return cleanHtmlForLLM(rawHtml, pageId);
     }
 
     @Tool("Find Confluence Page ID by Title")
@@ -342,9 +346,21 @@ public class JiraService {
         return null;
     }
 
-    private String cleanHtmlForLLM(String html) {
-        // Remove scripts, style, comments, macros
-        Element document = Jsoup.parse(html).body();
+    private String cleanHtmlForLLM(String html, String pageId) {
+        // Parse as XML to support both HTML and Confluence macros
+        Document document = Jsoup.parse(html, Parser.xmlParser());
+
+        // 🔍 Handle Confluence <ac:image> macros
+        document.select("ac|image").forEach(acImage -> {
+            Element attachment = acImage.selectFirst("ri|attachment");
+            if (attachment != null) {
+                String filename = attachment.attr("ri:filename");
+                String imageUrl = jiraProperties.getUrl() + "/wiki/download/attachments/" + pageId + "/" + filename;
+                String imageAnalysisResult = imageService.analyzeImage(imageUrl);
+                log.info("Image analysis result for {} is finished!", filename);
+                acImage.replaceWith(new TextNode(imageAnalysisResult));
+            }
+        });
 
         // Remove common Confluence-specific noise (optional)
         document.select(".conf-macro, .wysiwyg-macro, script, style").remove();
