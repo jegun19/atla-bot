@@ -17,19 +17,15 @@ import org.service.atlassian.bot.model.enums.IssueTypeEnum;
 import org.service.atlassian.bot.model.enums.Priority;
 import org.service.atlassian.bot.model.jira.model.*;
 import org.service.atlassian.bot.model.jira.request.*;
-import org.service.atlassian.bot.model.response.CreateIssueResponse;
-import org.service.atlassian.bot.model.response.GetIssueTypesResponse;
-import org.service.atlassian.bot.model.response.GetProjectResponse;
-import org.service.atlassian.bot.model.response.SearchIssueResponse;
-import org.springframework.http.*;
+import org.service.atlassian.bot.model.response.*;
+import org.service.atlassian.bot.util.HttpClientHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @Service
 @Slf4j
@@ -39,6 +35,13 @@ public class JiraService {
     private final JiraProperties jiraProperties;
     private final ObjectMapper objectMapper;
     private final ImageService imageService;
+    private final HttpClientHelper httpClientHelper;
+
+    private Map<String, String> createJiraHeader() {
+        Map<String, String> headerMap = new HashMap<>();
+        headerMap.put("Authorization", jiraProperties.getAuthToken());
+        return headerMap;
+    }
 
     @Tool("Get Reporter ID. Do not make any modification to the ID, use it as it is.")
     public String getReporterId() {
@@ -81,35 +84,15 @@ public class JiraService {
     @Tool("Search Jira project by key or name, returns a list of projects")
     public List<Project> searchProjectByKey(@P(value = "Project key OR name") String projectKey) {
         log.info("Searching Jira projects with key: {}", projectKey);
-
-        RestTemplate restTemplate = new RestTemplate();
-        String authToken = jiraProperties.getAuthToken();
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", authToken);
-        headers.set("Content-Type", "application/json");
-
         String searchUrl = jiraProperties.getUrl() + "/rest/api/2/project/search?query=" + projectKey;
-
-        HttpEntity<String> request = new HttpEntity<>(headers);
-
-        ResponseEntity<GetProjectResponse> response;
+        GetProjectResponse response;
         try {
-            response = restTemplate.exchange(
-                    searchUrl,
-                    HttpMethod.GET,
-                    request,
-                    GetProjectResponse.class
-            );
+            response = httpClientHelper.get(searchUrl, GetProjectResponse.class, createJiraHeader());
         } catch (RestClientException e) {
             log.error("Error searching Jira projects: {}", e.getMessage());
             throw new RuntimeException(e);
         }
-
-        log.info("Response: {}", response.getBody());
-        log.info("Values: {}", Objects.isNull(response.getBody()) ? List.of() : response.getBody().getValues().toString());
-
-        return Objects.isNull(response.getBody()) ? List.of() : response.getBody().getValues();
+        return response.getValues();
     }
 
     @Tool("Search JIRA issues")
@@ -132,64 +115,31 @@ public class JiraService {
         String jqlQuery = jqlBuilder.toString();
         log.info("JQL Query: {}", jqlQuery);
 
-        RestTemplate restTemplate = new RestTemplate();
-        String authToken = jiraProperties.getAuthToken();
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", authToken);
-        headers.set("Content-Type", "application/json");
-
         String searchUrl = jiraProperties.getUrl() + "/rest/api/2/search/jql?jql=" + jqlQuery + "&fields=" + fields;
-
-        log.info("Search URL: {}", searchUrl);
-        HttpEntity<String> request = new HttpEntity<>(headers);
-
-        ResponseEntity<SearchIssueResponse> response;
+        SearchIssueResponse response;
         try {
-            response = restTemplate.exchange(
-                    searchUrl,
-                    HttpMethod.GET,
-                    request,
-                    SearchIssueResponse.class
-            );
+            response = httpClientHelper.get(searchUrl, SearchIssueResponse.class, createJiraHeader());
         } catch (RestClientException e) {
             log.error("Error searching JIRA issues: {}", e.getMessage());
             throw new RuntimeException(e);
         }
-
-        log.info("Response: {}", response.getBody());
-        return response.getBody();
+        return response;
     }
 
     @Tool("Get issue types for a project using the project ID or key")
     public List<IssueType> getIssueTypesForProject(@P("Project ID or Key") String projectIdOrKey) {
         log.info("Fetching issue types for project ID: {}", projectIdOrKey);
 
-        RestTemplate restTemplate = new RestTemplate();
-        String authToken = jiraProperties.getAuthToken();
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", authToken);
-        headers.set("Content-Type", "application/json");
-
         String url = jiraProperties.getUrl() + "/rest/api/2/issue/createmeta/" + projectIdOrKey + "/issuetypes";
 
-        HttpEntity<String> request = new HttpEntity<>(headers);
-
-        ResponseEntity<GetIssueTypesResponse> response;
+        GetIssueTypesResponse response;
         try {
-            response = restTemplate.exchange(
-                    url,
-                    HttpMethod.GET,
-                    request,
-                    GetIssueTypesResponse.class
-            );
+            response = httpClientHelper.get(url, GetIssueTypesResponse.class, createJiraHeader());
         } catch (RestClientException e) {
             log.error("Error fetching issue types for project ID {}: {}", projectIdOrKey, e.getMessage());
             throw new RuntimeException(e);
         }
-
-        log.info("Fetched issue types: {}", response.getBody());
-        return Objects.isNull(response.getBody()) ? List.of() : response.getBody().getIssueTypes();
+        return response.getIssueTypes();
     }
 
     @Tool("Create a Bug issue")
@@ -275,73 +225,55 @@ public class JiraService {
     }
 
     public String createJiraIssue(String issuePayload) {
-        RestTemplate restTemplate = new RestTemplate();
-        String authToken = jiraProperties.getAuthToken();
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", authToken);
-        headers.set("Content-Type", "application/json");
-
-        HttpEntity<String> request = new HttpEntity<>(issuePayload, headers);
-
-        ResponseEntity<CreateIssueResponse> response;
+        String url = jiraProperties.getUrl() + "/rest/api/2/issue";
+        CreateIssueResponse response;
         try {
-            response = restTemplate.exchange(
-                    jiraProperties.getUrl() + "/rest/api/2/issue",
-                    HttpMethod.POST,
-                    request,
-                    CreateIssueResponse.class
-            );
+            response = httpClientHelper.post(url, issuePayload, CreateIssueResponse.class, createJiraHeader());
         } catch (RestClientException e) {
             log.error("Error creating JIRA issue: {}", e.getMessage());
             throw new RuntimeException(e);
         }
-        return jiraProperties.getUrl() + "/browse/" + response.getBody().getKey();
+        return jiraProperties.getUrl() + "/browse/" + response.getKey();
     }
 
     @Tool("Parse Confluence Document by ID")
     public String parseConfluenceDocument(@P("Page ID") String pageId) {
         log.info("Parsing Confluence Document with Page ID: {}", pageId);
         String url = jiraProperties.getUrl() + "/wiki/rest/api/content/" + pageId + "?expand=body.storage";
-        RestTemplate restTemplate = new RestTemplate();
 
-        HttpHeaders headers = new HttpHeaders();
-        String authToken = jiraProperties.getAuthToken();
-        headers.set("Authorization", authToken);
-        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
-
-        HttpEntity<Void> request = new HttpEntity<>(headers);
-        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
-
-        Map body = (Map) response.getBody().get("body");
-        Map storage = (Map) body.get("storage");
-        String rawHtml = (String) storage.get("value");
-
+        ConfluencePageResponse response;
+        try {
+            response = httpClientHelper.get(url, ConfluencePageResponse.class, createJiraHeader());
+        } catch (RestClientException e) {
+            log.error("Error parsing Confluence document: {}", e.getMessage());
+            throw new RuntimeException(e);
+        }
+        String rawHtml = response.getBody().getStorage().getValue();
         return cleanHtmlForLLM(rawHtml, pageId);
     }
 
     @Tool("Find Confluence Page ID by Title")
     public String findPageIdByTitle(@P("Page Title") String title) {
         log.info("Finding Confluence Page ID by title: {}", title);
-        RestTemplate restTemplate = new RestTemplate();
         String cql = "title~\"" + title + "\"";
-        String url = UriComponentsBuilder.fromHttpUrl(jiraProperties.getUrl() + "/wiki/rest/api/content/search")
+        String url = UriComponentsBuilder.fromUriString(jiraProperties.getUrl() + "/wiki/rest/api/content/search")
                 .queryParam("cql", cql)
                 .build()
                 .toUriString();
-        String authToken = jiraProperties.getAuthToken();
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", authToken);
-        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        ConfluenceSearchResponse response;
+        try {
+            response = httpClientHelper.get(url, ConfluenceSearchResponse.class, createJiraHeader());
+        } catch (RestClientException e) {
+            log.error("Error finding Confluence Page ID: {}", e.getMessage());
+            throw new RuntimeException(e);
+        }
 
-        HttpEntity<Void> request = new HttpEntity<>(headers);
-        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
-
-        List<Map> results = (List<Map>) response.getBody().get("results");
+        List<ConfluenceSearchResponse.ConfluencePageResult> results = response.getResults();
         if (results != null && !results.isEmpty()) {
-            log.info("Found Confluence Page ID: {}", results.get(0).get("id"));
-            return (String) results.get(0).get("id");
+            String id = results.get(0).getId();
+            log.info("Found Confluence Page ID: {}", id);
+            return id;
         }
         return null;
     }
@@ -350,7 +282,7 @@ public class JiraService {
         // Parse as XML to support both HTML and Confluence macros
         Document document = Jsoup.parse(html, Parser.xmlParser());
 
-        // 🔍 Handle Confluence <ac:image> macros
+        // Handle Confluence <ac:image> macros
         document.select("ac|image").forEach(acImage -> {
             Element attachment = acImage.selectFirst("ri|attachment");
             if (attachment != null) {
@@ -362,15 +294,11 @@ public class JiraService {
             }
         });
 
-        // Remove common Confluence-specific noise (optional)
         document.select(".conf-macro, .wysiwyg-macro, script, style").remove();
 
         // Clean HTML to safe plain text
         String plainText = Jsoup.clean(document.html(), "", Safelist.none(), new org.jsoup.nodes.Document.OutputSettings().prettyPrint(false));
 
-        // Optional post-processing
-        return plainText
-                .replaceAll("\\n{2,}", "\n") // collapse multiple newlines
-                .trim();
+        return plainText.replaceAll("\\n{2,}", "\n").trim();
     }
 }
