@@ -24,6 +24,11 @@ public class HttpClientHelper {
         return restTemplate.exchange(url, HttpMethod.POST, entity, responseType).getBody();
     }
 
+    public <T> T put(String url, Object request, Class<T> responseType, Map<String, String> headers) {
+        HttpEntity<?> entity = new HttpEntity<>(request, createHeaders(headers));
+        return restTemplate.exchange(url, HttpMethod.PUT, entity, responseType).getBody();
+    }
+
     private HttpHeaders createHeaders(Map<String, String> customHeaders) {
         HttpHeaders httpHeaders = new HttpHeaders();
         customHeaders.forEach(httpHeaders::set);

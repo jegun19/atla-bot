@@ -1,6 +1,7 @@
 package org.service.atlassian.bot.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -17,15 +18,16 @@ import org.service.atlassian.bot.model.enums.IssueTypeEnum;
 import org.service.atlassian.bot.model.enums.Priority;
 import org.service.atlassian.bot.model.jira.model.*;
 import org.service.atlassian.bot.model.jira.request.*;
+import org.service.atlassian.bot.model.jira.response.EditIssueResponse;
+import org.service.atlassian.bot.model.jira.response.GetIssueResponse;
 import org.service.atlassian.bot.model.response.*;
 import org.service.atlassian.bot.util.HttpClientHelper;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 @Slf4j
@@ -40,6 +42,7 @@ public class JiraService {
     private Map<String, String> createJiraHeader() {
         Map<String, String> headerMap = new HashMap<>();
         headerMap.put("Authorization", jiraProperties.getAuthToken());
+        headerMap.put("Content-Type", "application/json");
         return headerMap;
     }
 
@@ -300,5 +303,61 @@ public class JiraService {
         String plainText = Jsoup.clean(document.html(), "", Safelist.none(), new org.jsoup.nodes.Document.OutputSettings().prettyPrint(false));
 
         return plainText.replaceAll("\\n{2,}", "\n").trim();
+    }
+
+    @Tool("Attach Jira Issue to Epic")
+    public String attachToEpic(@P("Epic Key") String epicKey, @P("Issue Key") String issueKey, @P("Replace Epic") Boolean replace){
+        log.info("Attach Jira Issue {} to Epic: {}", issueKey, epicKey);
+
+        // find Epic
+        GetIssueResponse epic = getIssue(epicKey);
+        if(epic==null){
+            return "can't find epic key";
+        }
+
+        // find issue
+        GetIssueResponse issue = getIssue(issueKey);
+        if(issue==null){
+            return "can't find issue key";
+        }
+
+        // Check if issue has parent and ask for confirmation if needed
+        String issueEpic = Optional.ofNullable(issue.getFields())
+                .map(fields -> new ObjectMapper().convertValue(fields, Map.class))
+                .map(fieldMap -> (Map) fieldMap.get("parent"))
+                .map(parent -> String.format("Issue has epic attached, it's %s", parent.get("key")))
+                .orElse(null);
+
+        if (!replace && issueEpic!=null) {
+           return issueEpic;
+        }
+
+        String url = jiraProperties.getUrl() +"/rest/api/2/issue/"+ issue.getKey()+"?returnIssue=true";
+
+        // construct create epic payload
+        EditIssuePayload editIssuePayload = new EditIssuePayload();
+        editIssuePayload.constructAllEditPayload("parent", epic.getId(), epic.getKey());
+
+        try {
+            EditIssueResponse rs = httpClientHelper.put(url, editIssuePayload, EditIssueResponse.class, createJiraHeader());
+            log.info("success attach to epic {} for issue {}", epicKey, rs.getKey());
+            return "Success attaching Issue to Epic!";
+        } catch (Exception e) {
+            log.error("Error Attach Epic to Project: {}", e.getMessage());
+            return "failed to attach epic to project";
+        }
+    }
+
+    public GetIssueResponse getIssue(String key){
+        log.info("get issue {}", key);
+        String url = jiraProperties.getUrl() +"/rest/api/2/issue/"+ key;
+        GetIssueResponse response = null;
+        try {
+            response = httpClientHelper.get(url, GetIssueResponse.class, createJiraHeader());
+        } catch (Exception e) {
+            log.error("Error get issue: {}", e.getMessage());
+            return null;
+        }
+        return response;
     }
 }
