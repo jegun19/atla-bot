@@ -16,6 +16,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
@@ -63,5 +64,37 @@ class BotServiceIntegrationTest {
         Mockito.verify(jiraService, times(1)).findPageIdByTitle("User Onboarding");
         Mockito.verify(jiraService, times(1)).parseConfluenceDocument("1234567890");
     }
+
+
+    @Test
+    @DisplayName("Test Jira Assistant with a user message to attach Jira Ticket")
+    void attachJiraIssueToEpic(){
+
+        when(jiraService.attachToEpic(anyString(), anyString(), anyBoolean()))
+                .thenReturn("this issue is attached to ECS-2")
+                .thenReturn("success attached");
+
+        String userMessage = "Hi, I want to attach this issue ECS-8 to this epic ECS-2?";
+        Result<String> result = jiraAssistant.chat(userMessage);
+        log.info("jiraAssistant attachJiraIssueToEpic first reply:  {}", result.content());
+
+        String userMessageTwo = "Sure replace it";
+        Result<String> resultTwo = jiraAssistant.chat(userMessageTwo);
+        log.info("jiraAssistant attachJiraIssueToEpic second reply:  {}", resultTwo.content());
+
+        // assert that correct tools were called
+        List<ToolExecution> toolExecutionList = resultTwo.toolExecutions();
+        assertEquals(1, toolExecutionList.size());
+
+        toolExecutionList.stream().filter(t -> t.request().name().equals("attachToEpic"))
+                .findFirst().ifPresentOrElse(
+                        tool -> log.info("Tool attachToEpic executed: {}", tool),
+                        () -> fail("Tool attachToEpic not executed")
+                );
+
+        // assert that tools were called with correct parameters
+        Mockito.verify(jiraService, times(1)).attachToEpic("ECS-2", "ECS-8", false);
+    }
+
 
 }
