@@ -40,6 +40,7 @@ public class JiraService {
     private Map<String, String> createJiraHeader() {
         Map<String, String> headerMap = new HashMap<>();
         headerMap.put("Authorization", jiraProperties.getAuthToken());
+        headerMap.put("Content-Type", "application/json");
         return headerMap;
     }
 
