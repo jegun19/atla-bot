@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.service.atlassian.bot.exception.SensitiveContentException;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.regex.Pattern;
 
 @Component
@@ -16,11 +17,10 @@ public class SensitiveContentChecker {
         if (input == null || input.isBlank()) return;
 
         // Pattern match
-        for (Pattern pattern : patternProvider.getPatterns()) {
-            if (pattern.matcher(input).find()) {
-                throw new SensitiveContentException("Request contains sensitive data matching pattern: " + pattern);
+        for (Map.Entry<String, Pattern> sensitivePattern : patternProvider.getPatterns().entrySet()) {
+            if (sensitivePattern.getValue().matcher(input).find()) {
+                throw new SensitiveContentException("Request contains sensitive data matching pattern: " + sensitivePattern.getKey());
             }
         }
     }
 }
-
