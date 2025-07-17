@@ -1,6 +1,5 @@
 package org.service.atlassian.bot.config;
 
-import dev.langchain4j.agent.tool.Tool;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
