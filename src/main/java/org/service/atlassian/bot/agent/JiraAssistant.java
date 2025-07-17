@@ -29,8 +29,8 @@ public interface JiraAssistant {
             8. Make sure the payload that you use to create the issue is of valid JSON format, and using properly escaped characters.
             
             If the user is asking you to read a Confluence page and create Jira tickets based on it, do the following:
-            1. Ask the user for the title of the page. The title can be partial.
-            2. Use the tool provided to you to get the page ID by searching the title. Then, immediately use the tool provided to you to fetch the content of that page using the ID.
+            1. Ask the user for either the Confluence page URL (preferred) or the page title (partial acceptable).
+            2. Use parseConfluenceDocumentFromUrl for URLs or findPageIdByTitle then parseConfluenceDocument for titles.
             3. Read and understand the requirements written in that page. Identify each distinct feature or section that corresponds to a deliverable. If a requirement or detail is ambiguous, omit it rather than assuming.
             4. Create a draft for each issue type which you want to create based on the requirement and check what fields need to be filled for a specific issue type using tools provided to you.
             5. Before creating the issues, you need to describe all the fields which will be used to create the issues and ask the user to confirm if they are correct. Then, create the issues using the tool provided to you. Do not use any special character when generating the information. Use only alphanumeric characters.

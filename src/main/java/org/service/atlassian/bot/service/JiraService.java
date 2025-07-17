@@ -237,6 +237,29 @@ public class JiraService {
         return jiraProperties.getUrl() + "/browse/" + response.getKey();
     }
 
+    @Tool("Parse Confluence Document from URL")
+    public String parseConfluenceDocumentFromUrl(@P("Confluence Page URL") String url) {
+        log.info("Extracting Page ID from Confluence URL: {}", url);
+        
+        // Validate domain first
+        if (!isValidConfluenceDomain(url)) {
+            log.error("Invalid Confluence domain. URL must be from: {}", jiraProperties.getUrl());
+            throw new IllegalArgumentException("Confluence URL must be from your organization's domain: " + jiraProperties.getUrl());
+        }
+        
+        // Extract page ID from URL pattern: /pages/{pageId}/
+        String pageId = extractPageIdFromUrl(url);
+        if (pageId == null) {
+            log.error("Could not extract page ID from URL: {}", url);
+            throw new IllegalArgumentException("Invalid Confluence URL format");
+        }
+        
+        log.info("Extracted Page ID: {}", pageId);
+        
+        // Call the existing parseConfluenceDocument method
+        return parseConfluenceDocument(pageId);
+    }
+
     @Tool("Parse Confluence Document by ID")
     public String parseConfluenceDocument(@P("Page ID") String pageId) {
         log.info("Parsing Confluence Document with Page ID: {}", pageId);
@@ -301,5 +324,39 @@ public class JiraService {
         String plainText = Jsoup.clean(document.html(), "", Safelist.none(), new org.jsoup.nodes.Document.OutputSettings().prettyPrint(false));
 
         return plainText.replaceAll("\\n{2,}", "\n").trim();
+    }
+
+    private boolean isValidConfluenceDomain(String url) {
+        try {
+            // Get the base domain from jiraProperties (remove trailing slash if present)
+            String expectedDomain = jiraProperties.getUrl().replaceAll("/$", "");
+            
+            // Check if the URL starts with our expected domain
+            return url.startsWith(expectedDomain + "/wiki/");
+        } catch (Exception e) {
+            log.error("Error validating Confluence domain: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private String extractPageIdFromUrl(String url) {
+        // Pattern: https://domain.atlassian.net/wiki/spaces/SPACE/pages/PAGEID/TITLE
+        try {
+            String[] parts = url.split("/pages/");
+            if (parts.length < 2) {
+                return null;
+            }
+            
+            String afterPages = parts[1];
+            String[] idParts = afterPages.split("/");
+            if (idParts.length > 0) {
+                return idParts[0]; // This should be the page ID
+            }
+            
+            return null;
+        } catch (Exception e) {
+            log.error("Error extracting page ID from URL: {}", e.getMessage());
+            return null;
+        }
     }
 }
