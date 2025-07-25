@@ -26,6 +26,9 @@ public class CreateIssueRequestPayload {
         @JsonProperty("reporter")
         private ReporterPayload reporter;
 
+        @JsonProperty("parent")
+        private ParentPayload parent;
+
         @JsonProperty("summary")
         private String summary;
 
@@ -65,5 +68,11 @@ public class CreateIssueRequestPayload {
     @Builder
     public static class PriorityPayload {
         private String id;
+    }
+    @Data
+    @Builder
+    public static class ParentPayload {
+        private String id;
+        private String key;
     }
 }

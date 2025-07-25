@@ -334,12 +334,13 @@ public class JiraService {
 
         String url = jiraProperties.getUrl() +"/rest/api/2/issue/"+ issue.getKey()+"?returnIssue=true";
 
-        // construct create epic payload
-        EditIssuePayload editIssuePayload = new EditIssuePayload();
-        editIssuePayload.constructAllEditPayload("parent", epic.getId(), epic.getKey());
+        // construct edit epic payload
+        CreateIssueRequestPayload.ParentPayload parent = CreateIssueRequestPayload.ParentPayload.builder().key(epic.getKey()).id(epic.getId()).build();
+        CreateIssueRequestPayload.Fields fields = CreateIssueRequestPayload.Fields.builder().parent(parent).build();
+        CreateIssueRequestPayload editRequest = CreateIssueRequestPayload.builder().fields(fields).build();
 
         try {
-            EditIssueResponse rs = httpClientHelper.put(url, editIssuePayload, EditIssueResponse.class, createJiraHeader());
+            EditIssueResponse rs = httpClientHelper.put(url, editRequest, EditIssueResponse.class, createJiraHeader());
             log.info("success attach to epic {} for issue {}", epicKey, rs.getKey());
             return "Success attaching Issue to Epic!";
         } catch (Exception e) {

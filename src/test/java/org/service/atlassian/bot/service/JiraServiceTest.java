@@ -6,10 +6,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.service.atlassian.bot.config.JiraProperties;
-import org.service.atlassian.bot.model.jira.request.EditIssuePayload;
+import org.service.atlassian.bot.model.jira.request.CreateIssueRequestPayload;
 import org.service.atlassian.bot.model.jira.response.EditIssueResponse;
 import org.service.atlassian.bot.model.jira.response.GetIssueResponse;
 import org.service.atlassian.bot.util.HttpClientHelper;
@@ -17,7 +16,7 @@ import org.service.atlassian.bot.util.HttpClientHelper;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 
@@ -51,7 +50,7 @@ class JiraServiceTest {
         epic.setKey("ECS-8");
 
         Mockito.lenient().when(jiraProperties.getUrl()).thenReturn("url-example");
-        Mockito.when(httpClientHelper.put(eq("url-example/rest/api/2/issue/ECS-123?returnIssue=true"), any(EditIssuePayload.class), any(), any())).thenReturn(rs);
+        Mockito.when(httpClientHelper.put(eq("url-example/rest/api/2/issue/ECS-123?returnIssue=true"), any(CreateIssueRequestPayload.class), any(), any())).thenReturn(rs);
         Mockito.lenient().when(httpClientHelper.get(eq("url-example/rest/api/2/issue/ECS-123"), any(), any())).thenReturn(issue);
         Mockito.lenient().when(httpClientHelper.get(eq("url-example/rest/api/2/issue/ECS-8"), any(), any())).thenReturn(epic);
 
@@ -148,7 +147,7 @@ class JiraServiceTest {
         epic.setKey("ECS-8");
 
         Mockito.lenient().when(jiraProperties.getUrl()).thenReturn("url-example");
-        Mockito.when(httpClientHelper.put(eq("url-example/rest/api/2/issue/ECS-123?returnIssue=true"), any(EditIssuePayload.class), any(), any())).thenThrow(new RuntimeException("failed to attach epic to project"));
+        Mockito.when(httpClientHelper.put(eq("url-example/rest/api/2/issue/ECS-123?returnIssue=true"), any(CreateIssueRequestPayload.class), any(), any())).thenThrow(new RuntimeException("failed to attach epic to project"));
         Mockito.lenient().when(httpClientHelper.get(eq("url-example/rest/api/2/issue/ECS-123"), any(), any())).thenReturn(issue);
         Mockito.lenient().when(httpClientHelper.get(eq("url-example/rest/api/2/issue/ECS-8"), any(), any())).thenReturn(epic);
 
